@@ -1,0 +1,9 @@
+data/
+uploads/
+output/
+backend/venv/
+backend/__pycache__/
+backend/test_*.mp4
+.env
+frontend/node_modules/
+frontend/dist/
