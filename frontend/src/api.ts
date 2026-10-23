@@ -1,21 +1,15 @@
 import type {
-
   AppSettings,
-
+  EditInfo,
+  EditorState,
   JobStatus,
-
+  JobSummary,
   LayoutOption,
-
   SchedulePreview,
-
   ScheduledPost,
-
   SocialAccount,
-
   SocialStatus,
-
   VideoInput,
-
 } from "./types";
 
 
@@ -42,9 +36,22 @@ async function api(input: string, init?: RequestInit): Promise<Response> {
 
 
 
-export async function createJob(): Promise<string> {
+export async function listJobs(): Promise<JobSummary[]> {
+  const res = await api("/jobs");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Failed to list projects");
+  }
+  return res.json();
+}
 
-  const res = await api("/jobs", { method: "POST" });
+export async function createJob(name: string): Promise<string> {
+
+  const res = await api("/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name.trim() }),
+  });
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -191,7 +198,11 @@ export async function startProcessing(
 
   jobId: string,
 
-  settings: AppSettings
+  settings: AppSettings,
+
+  editor: EditorState,
+
+  batchName: string
 
 ): Promise<void> {
 
@@ -215,12 +226,81 @@ export async function startProcessing(
 
       max_shorts: settings.maxShorts,
 
+      cut_mode: editor.cutMode,
+
+      clips:
+
+        editor.cutMode === "custom"
+
+          ? editor.clips.map((c) => ({ start: c.start, end: c.end }))
+
+          : null,
+
+      trim_start: editor.trimStart,
+
+      trim_end: editor.trimEnd || editor.duration,
+
+      music_enabled: editor.musicEnabled && Boolean(editor.musicName),
+
+      mute_original: editor.muteOriginal,
+
+      original_volume: editor.originalVolume,
+
+      music_volume: editor.musicVolume,
+
+      batch_name: batchName.trim(),
+
     }),
 
   });
 
-  if (!res.ok) throw new Error("Failed to start processing");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const detail = data.detail;
+    if (typeof detail === "string") throw new Error(detail);
+    if (Array.isArray(detail) && detail[0]?.msg) throw new Error(detail[0].msg);
+    throw new Error("Failed to start processing");
+  }
 
+}
+
+export async function fetchEditInfo(jobId: string): Promise<EditInfo> {
+  const res = await api(`/jobs/${jobId}/edit-info`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Failed to load video for editing");
+  }
+  return res.json();
+}
+
+export function sourceVideoUrl(jobId: string, slot: 1 | 2 = 1): string {
+  return `${API}/jobs/${jobId}/source/${slot}`;
+}
+
+export function sourceMusicUrl(jobId: string): string {
+  return `${API}/jobs/${jobId}/music`;
+}
+
+export async function uploadMusic(
+  jobId: string,
+  file: File
+): Promise<{ filename: string; duration: number | null }> {
+  const form = new FormData();
+  form.append("music", file);
+  const res = await api(`/jobs/${jobId}/music`, { method: "POST", body: form });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Failed to upload soundtrack");
+  }
+  return res.json();
+}
+
+export async function removeMusic(jobId: string): Promise<void> {
+  const res = await api(`/jobs/${jobId}/music`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Failed to remove soundtrack");
+  }
 }
 
 
@@ -250,17 +330,99 @@ export async function fetchLayouts(): Promise<LayoutOption[]> {
 
 
 export function downloadUrl(jobId: string, filename: string): string {
-
-  return `${API}/jobs/${jobId}/download/${filename}`;
-
+  return `${API}/jobs/${jobId}/download/${encodeURIComponent(filename)}`;
 }
 
-
-
 export function downloadAllUrl(jobId: string): string {
-
   return `${API}/jobs/${jobId}/download-all`;
+}
 
+function absoluteApiUrl(path: string): string {
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function isShortForgeDesktop(): boolean {
+  return typeof navigator !== "undefined" && /ShortForgeDesktop/i.test(navigator.userAgent);
+}
+
+async function triggerBlobDownload(res: Response, fallbackName: string) {
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Download failed");
+  }
+  const blob = await res.blob();
+  const header = res.headers.get("Content-Disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(header);
+  const name = match ? decodeURIComponent(match[1].replace(/"/g, "")) : fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Last-resort: navigate/open the file URL (works in browser + some WebViews). */
+function openDownloadUrl(path: string) {
+  const url = absoluteApiUrl(path);
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+export async function downloadShortFile(jobId: string, filename: string): Promise<string | void> {
+  const path = `/api/jobs/${jobId}/download/${encodeURIComponent(filename)}`;
+  if (isShortForgeDesktop()) {
+    try {
+      const res = await api(`/local/save/${jobId}/${encodeURIComponent(filename)}`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data.detail || data.error || "Desktop save failed");
+      return data.path as string;
+    } catch (e) {
+      console.warn("desktop local save failed", e);
+    }
+  }
+  try {
+    const res = await api(`/jobs/${jobId}/download/${encodeURIComponent(filename)}`);
+    await triggerBlobDownload(res, filename);
+  } catch (e) {
+    openDownloadUrl(path);
+    throw e instanceof Error ? e : new Error("Download failed — opened file link instead");
+  }
+}
+
+export async function downloadAllFiles(
+  jobId: string,
+  zipName = "shorts.zip"
+): Promise<string | void> {
+  const path = `/api/jobs/${jobId}/download-all`;
+  if (isShortForgeDesktop()) {
+    try {
+      const res = await api(`/local/save-all/${jobId}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data.detail || data.error || "Desktop save failed");
+      return data.path as string;
+    } catch (e) {
+      console.warn("desktop local save-all failed", e);
+    }
+  }
+  try {
+    const res = await api(`/jobs/${jobId}/download-all`);
+    await triggerBlobDownload(res, zipName);
+  } catch (e) {
+    openDownloadUrl(path);
+    throw e instanceof Error ? e : new Error("Download failed — opened file link instead");
+  }
 }
 
 

@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -18,6 +19,8 @@ CREATE TABLE IF NOT EXISTS user_jobs (
     job_id TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL,
     created_at TEXT NOT NULL,
+    batch_name TEXT,
+    batch_slug TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -67,6 +70,13 @@ CREATE TABLE IF NOT EXISTS posted_clips (
 
 CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status_time
     ON scheduled_posts(status, scheduled_at);
+
+CREATE TABLE IF NOT EXISTS oauth_states (
+    state TEXT PRIMARY KEY,
+    platform TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at REAL NOT NULL
+);
 """
 
 
@@ -78,6 +88,17 @@ def init_db() -> None:
         _ensure_account_id_columns(conn)
         _migrate_unique_constraints(conn)
         _migrate_multi_user(conn)
+        _migrate_job_batches(conn)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS oauth_states (
+                state TEXT PRIMARY KEY,
+                platform TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """
+        )
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_social_accounts_user_platform
@@ -245,6 +266,24 @@ def create_user(email: str, password_hash: str) -> int:
         return int(cur.lastrowid)
 
 
+GUEST_EMAIL = "guest@local"
+
+
+def ensure_guest_user() -> dict[str, Any]:
+    """Local no-login user for when AUTH_REQUIRED is off."""
+    existing = get_user_by_email(GUEST_EMAIL)
+    if existing:
+        return existing
+    import bcrypt
+
+    # Random bcrypt hash — guest cannot sign in with a password
+    password_hash = bcrypt.hashpw(os.urandom(32), bcrypt.gensalt()).decode()
+    user_id = create_user(GUEST_EMAIL, password_hash)
+    user = get_user_by_id(user_id)
+    assert user is not None
+    return user
+
+
 def get_user_by_email(email: str) -> dict[str, Any] | None:
     with get_conn() as conn:
         row = conn.execute(
@@ -259,17 +298,89 @@ def get_user_by_id(user_id: int) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def assign_job_to_user(job_id: str, user_id: int) -> None:
+def store_oauth_state(state: str, platform: str, user_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO oauth_states (state, platform, user_id, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(state) DO UPDATE SET
+                platform = excluded.platform,
+                user_id = excluded.user_id,
+                created_at = excluded.created_at
+            """,
+            (state, platform, user_id, datetime.utcnow().timestamp()),
+        )
+
+
+def pop_oauth_state(state: str, ttl_seconds: int = 600) -> tuple[str, int] | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT platform, user_id, created_at FROM oauth_states WHERE state = ?",
+            (state,),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
+        created = float(row["created_at"])
+        if datetime.utcnow().timestamp() - created > ttl_seconds:
+            return None
+        return str(row["platform"]), int(row["user_id"])
+
+
+def _migrate_job_batches(conn: sqlite3.Connection) -> None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(user_jobs)")}
+    if "batch_name" not in cols:
+        conn.execute("ALTER TABLE user_jobs ADD COLUMN batch_name TEXT")
+    if "batch_slug" not in cols:
+        conn.execute("ALTER TABLE user_jobs ADD COLUMN batch_slug TEXT")
+
+
+def assign_job_to_user(
+    job_id: str,
+    user_id: int,
+    batch_name: str | None = None,
+    batch_slug: str | None = None,
+) -> None:
     now = datetime.utcnow().isoformat()
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO user_jobs (job_id, user_id, created_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(job_id) DO UPDATE SET user_id = excluded.user_id
+            INSERT INTO user_jobs (job_id, user_id, created_at, batch_name, batch_slug)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(job_id) DO UPDATE SET
+                user_id = excluded.user_id,
+                batch_name = COALESCE(excluded.batch_name, user_jobs.batch_name),
+                batch_slug = COALESCE(excluded.batch_slug, user_jobs.batch_slug)
             """,
-            (job_id, user_id, now),
+            (job_id, user_id, now, batch_name, batch_slug),
         )
+
+
+def set_job_batch(job_id: str, batch_name: str, batch_slug: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE user_jobs
+            SET batch_name = ?, batch_slug = ?
+            WHERE job_id = ?
+            """,
+            (batch_name, batch_slug, job_id),
+        )
+
+
+def get_job_batch(job_id: str) -> dict[str, str | None] | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT batch_name, batch_slug FROM user_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "batch_name": row["batch_name"],
+        "batch_slug": row["batch_slug"],
+    }
 
 
 def get_job_owner(job_id: str) -> int | None:
@@ -278,6 +389,29 @@ def get_job_owner(job_id: str) -> int | None:
             "SELECT user_id FROM user_jobs WHERE job_id = ?", (job_id,)
         ).fetchone()
     return int(row["user_id"]) if row else None
+
+
+def list_user_jobs(user_id: int, limit: int = 40) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT job_id, batch_name, batch_slug, created_at
+            FROM user_jobs
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        ).fetchall()
+    return [
+        {
+            "job_id": row["job_id"],
+            "batch_name": row["batch_name"],
+            "batch_slug": row["batch_slug"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
 
 
 def job_belongs_to_user(job_id: str, user_id: int) -> bool:

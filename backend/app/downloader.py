@@ -61,9 +61,11 @@ def _download_with_ytdlp(
 ) -> Path:
     import yt_dlp
 
+    output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    stem = output_path.with_suffix("")
-    outtmpl = str(stem) + ".%(ext)s"
+    # Windows-safe outtmpl: avoid Path quirks and concurrent fragment races (Errno 22).
+    work_stem = output_path.parent / f"{output_path.stem}_dl"
+    outtmpl = str(work_stem).replace("\\", "/") + ".%(ext)s"
 
     def progress_hook(d: dict) -> None:
         if on_progress and d.get("status") == "downloading":
@@ -78,8 +80,12 @@ def _download_with_ytdlp(
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "concurrent_fragment_downloads": 5,
-        "retries": 3,
+        # Parallel fragments often cause Errno 22 on Windows.
+        "concurrent_fragment_downloads": 1,
+        "retries": 5,
+        "fragment_retries": 5,
+        "windowsfilenames": True,
+        "noprogress": True,
         "progress_hooks": [progress_hook],
     }
 
@@ -89,14 +95,16 @@ def _download_with_ytdlp(
             raise ValueError("Could not fetch video from URL")
 
     candidates = sorted(
-        output_path.parent.glob(f"{stem.name}.*"),
+        output_path.parent.glob(f"{work_stem.name}.*"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     for candidate in candidates:
         if candidate.suffix.lower() in VIDEO_EXTENSIONS | {".mp4"}:
             if candidate != output_path:
-                candidate.rename(output_path)
+                if output_path.exists():
+                    output_path.unlink()
+                candidate.replace(output_path)
             return output_path
 
     raise ValueError("Download finished but no video file was found")
@@ -123,7 +131,13 @@ def download_from_url(
     try:
         return _download_with_ytdlp(url, output_path, on_progress=on_progress)
     except Exception as exc:
-        raise ValueError(f"Failed to download video: {exc}") from exc
+        msg = str(exc).strip() or exc.__class__.__name__
+        if "Errno 22" in msg or "Invalid argument" in msg:
+            raise ValueError(
+                "Unable to download video (Windows file error). "
+                "Try again, or upload the file instead of a link."
+            ) from exc
+        raise ValueError(f"Unable to download video: {msg}") from exc
 
 
 def normalize_url_label(url: str) -> str:

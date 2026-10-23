@@ -1,7 +1,8 @@
-import type { AppSettings, CaptionStyle, SegmentLength } from "../types";
+import type { AppSettings, CaptionStyle, EditorState, SegmentLength } from "../types";
 
 interface Props {
   settings: AppSettings;
+  editor: EditorState;
   onChange: (s: AppSettings) => void;
 }
 
@@ -9,6 +10,9 @@ const SEGMENTS: { value: SegmentLength; label: string }[] = [
   { value: 30, label: "30 sec" },
   { value: 60, label: "1 min" },
   { value: 120, label: "2 min" },
+  { value: 180, label: "3 min" },
+  { value: 240, label: "4 min" },
+  { value: 300, label: "5 min" },
 ];
 
 const CAPTION_STYLES: { value: CaptionStyle; label: string; preview: string }[] =
@@ -19,18 +23,31 @@ const CAPTION_STYLES: { value: CaptionStyle; label: string; preview: string }[] 
     { value: "minimal", label: "Minimal", preview: "Subtle subtitles" },
   ];
 
-export default function SettingsPanel({ settings, onChange }: Props) {
+export default function SettingsPanel({ settings, editor, onChange }: Props) {
   const update = (partial: Partial<AppSettings>) =>
     onChange({ ...settings, ...partial });
+  const customCount = editor.clips.length;
+  const presetValues = new Set(SEGMENTS.map((s) => s.value));
+  const customMinutes =
+    !presetValues.has(settings.segmentLength) && settings.segmentLength >= 60
+      ? Math.round(settings.segmentLength / 60)
+      : "";
 
   return (
     <div className="space-y-8">
+      {editor.cutMode === "custom" ? (
+        <div className="rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-gray-300">
+          Using <span className="font-semibold text-white">{customCount}</span>{" "}
+          custom part{customCount === 1 ? "" : "s"} from the editor. Clip length
+          is taken from those ranges. Files are labeled Part 1, Part 2, …
+        </div>
+      ) : (
       <div>
         <h3 className="font-display mb-1 text-lg font-semibold">
           Clip Length
         </h3>
         <p className="mb-4 text-sm text-gray-400">
-          Each short will be exactly this duration
+          Auto-split into equal parts (up to 15 min). Each file is labeled Part 1, Part 2, …
         </p>
         <div className="flex flex-wrap gap-3">
           {SEGMENTS.map((seg) => (
@@ -38,7 +55,7 @@ export default function SettingsPanel({ settings, onChange }: Props) {
               key={seg.value}
               type="button"
               onClick={() => update({ segmentLength: seg.value })}
-              className={`rounded-xl px-6 py-3 font-medium transition ${
+              className={`rounded-xl px-5 py-3 font-medium transition ${
                 settings.segmentLength === seg.value
                   ? "bg-accent text-white"
                   : "border border-surface-border bg-surface hover:border-brand/50"
@@ -48,7 +65,43 @@ export default function SettingsPanel({ settings, onChange }: Props) {
             </button>
           ))}
         </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <label className="text-sm text-gray-400">Custom minutes</label>
+          <input
+            type="number"
+            min={1}
+            max={15}
+            step={1}
+            placeholder="e.g. 7"
+            value={customMinutes}
+            onChange={(e) => {
+              const mins = parseInt(e.target.value, 10);
+              if (!Number.isFinite(mins) || mins < 1) return;
+              update({ segmentLength: Math.min(15, mins) * 60 });
+            }}
+            className="w-28 rounded-xl border border-surface-border bg-surface px-3 py-2 outline-none focus:border-brand"
+          />
+          <span className="text-xs text-gray-500">
+            Current: {Math.round(settings.segmentLength / 60)}m {settings.segmentLength % 60}s
+          </span>
+        </div>
       </div>
+      )}
+      {editor.cutMode === "auto" &&
+        editor.trimEnd - editor.trimStart < settings.segmentLength && (
+          <p className="text-sm text-amber-300">
+            Trimmed range is {Math.max(0, Math.floor(editor.trimEnd - editor.trimStart))}s,
+            shorter than {settings.segmentLength}s clips. Use custom parts in the editor
+            or pick a shorter clip length.
+          </p>
+        )}
+
+      {(editor.musicName || editor.muteOriginal) && (
+        <p className="text-sm text-gray-400">
+          Soundtrack: {editor.musicName || "none"}
+          {editor.muteOriginal ? " · original audio muted" : ""}
+        </p>
+      )}
 
       <div>
         <div className="mb-4 flex items-center justify-between">

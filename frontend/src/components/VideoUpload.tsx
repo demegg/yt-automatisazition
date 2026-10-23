@@ -8,6 +8,8 @@ interface Props {
   video2: VideoInput;
   onVideo1: (v: VideoInput) => void;
   onVideo2: (v: VideoInput) => void;
+  batchName: string;
+  onBatchName: (name: string) => void;
 }
 
 function formatSize(bytes: number): string {
@@ -192,6 +194,8 @@ export default function VideoUpload({
   video2,
   onVideo1,
   onVideo2,
+  batchName,
+  onBatchName,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -202,6 +206,24 @@ export default function VideoUpload({
           <strong className="text-white">pasting a link</strong> (YouTube, TikTok, etc.).
           ShortForge slices them into vertical 9:16 Shorts with optional captions.
         </p>
+      </div>
+
+      <div>
+        <label htmlFor="batch-name" className="font-display mb-1 block text-lg font-semibold">
+          Batch name
+        </label>
+        <p className="mb-3 text-sm text-gray-400">
+          Required. Clips are saved in a folder with this name, numbered in order.
+        </p>
+        <input
+          id="batch-name"
+          type="text"
+          maxLength={80}
+          value={batchName}
+          onChange={(e) => onBatchName(e.target.value)}
+          placeholder="e.g. Podcast Monday, Gym clips, Travel vlog"
+          className="w-full rounded-xl border border-surface-border bg-surface px-4 py-3 outline-none focus:border-brand"
+        />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

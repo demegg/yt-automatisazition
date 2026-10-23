@@ -1,4 +1,4 @@
-export type SegmentLength = 30 | 60 | 120;
+export type SegmentLength = number;
 
 export type LayoutMode =
   | "single"
@@ -78,6 +78,7 @@ export interface ShortInfo {
   end_time: number;
   endTime?: number;
   duration: number;
+  title?: string | null;
 }
 
 export interface JobStatus {
@@ -89,6 +90,22 @@ export interface JobStatus {
   completed_shorts: number;
   shorts: ShortInfo[];
   error?: string | null;
+  batch_name?: string | null;
+  batch_slug?: string | null;
+}
+
+export interface JobSummary {
+  job_id: string;
+  status: string;
+  progress: number;
+  message?: string | null;
+  batch_name?: string | null;
+  batch_slug?: string | null;
+  total_shorts: number;
+  completed_shorts: number;
+  error?: string | null;
+  live?: boolean;
+  created_at?: string | null;
 }
 
 export interface AppSettings {
@@ -99,7 +116,55 @@ export interface AppSettings {
   maxShorts: number | null;
 }
 
-export type Step = "upload" | "configure" | "processing" | "results";
+export type Step = "upload" | "edit" | "configure" | "processing" | "results";
+
+export type CutMode = "auto" | "custom";
+
+export interface ClipRange {
+  id: string;
+  start: number;
+  end: number;
+}
+
+export interface EditorState {
+  cutMode: CutMode;
+  trimStart: number;
+  trimEnd: number;
+  clips: ClipRange[];
+  musicEnabled: boolean;
+  musicName: string | null;
+  muteOriginal: boolean;
+  originalVolume: number;
+  musicVolume: number;
+  duration: number;
+}
+
+export function emptyEditorState(): EditorState {
+  return {
+    cutMode: "auto",
+    trimStart: 0,
+    trimEnd: 0,
+    clips: [],
+    musicEnabled: false,
+    musicName: null,
+    muteOriginal: false,
+    originalVolume: 1,
+    musicVolume: 0.35,
+    duration: 0,
+  };
+}
+
+export function newClipId(): string {
+  return `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export interface EditInfo {
+  duration1: number;
+  duration2: number | null;
+  has_video2: boolean;
+  music_name: string | null;
+  music_duration: number | null;
+}
 
 export type InputMode = "file" | "url";
 

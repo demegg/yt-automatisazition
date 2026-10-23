@@ -32,9 +32,13 @@ from app.db import (
 
     list_social_accounts,
 
+    pop_oauth_state,
+
     save_social_account,
 
     set_default_account,
+
+    store_oauth_state,
 
 )
 
@@ -58,8 +62,6 @@ router = APIRouter(prefix="/api/social", tags=["social"])
 
 
 
-_oauth_states: dict[str, tuple[str, int, float]] = {}
-
 STATE_TTL_SECONDS = 600
 
 
@@ -76,7 +78,7 @@ def _frontend_url() -> str:
 
 def _store_state(state: str, platform: str, user_id: int) -> None:
 
-    _oauth_states[state] = (platform, user_id, datetime.utcnow().timestamp())
+    store_oauth_state(state, platform, user_id)
 
 
 
@@ -84,19 +86,7 @@ def _store_state(state: str, platform: str, user_id: int) -> None:
 
 def _pop_state(state: str) -> tuple[str, int] | None:
 
-    entry = _oauth_states.pop(state, None)
-
-    if not entry:
-
-        return None
-
-    platform, user_id, created = entry
-
-    if datetime.utcnow().timestamp() - created > STATE_TTL_SECONDS:
-
-        return None
-
-    return platform, user_id
+    return pop_oauth_state(state, STATE_TTL_SECONDS)
 
 
 
@@ -262,8 +252,6 @@ def youtube_connect(user: CurrentUser = Depends(get_current_user)) -> RedirectRe
 
         access_type="offline",
 
-        include_granted_scopes="true",
-
         prompt="consent",
 
         state=state,
@@ -278,7 +266,19 @@ def youtube_connect(user: CurrentUser = Depends(get_current_user)) -> RedirectRe
 
 @router.get("/youtube/callback")
 
-def youtube_callback(code: str, state: str) -> RedirectResponse:
+def youtube_callback(
+
+    state: str,
+
+    code: str | None = None,
+
+    error: str | None = None,
+
+) -> RedirectResponse:
+
+    if error or not code:
+
+        return RedirectResponse(f"{_frontend_url()}?oauth=youtube&success=0")
 
     parsed = _pop_state(state)
 
@@ -326,7 +326,13 @@ def youtube_callback(code: str, state: str) -> RedirectResponse:
 
     )
 
-    flow.fetch_token(code=code)
+    try:
+
+        flow.fetch_token(code=code)
+
+    except Exception:
+
+        return RedirectResponse(f"{_frontend_url()}?oauth=youtube&success=0")
 
     creds = flow.credentials
 

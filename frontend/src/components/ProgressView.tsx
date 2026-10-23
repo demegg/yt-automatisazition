@@ -23,7 +23,11 @@ export default function ProgressView({ status }: Props) {
       </div>
 
       <h2 className="font-display text-2xl font-bold">
-        {isFailed ? "Something went wrong" : "Creating your shorts..."}
+          {isFailed
+            ? "Something went wrong"
+            : status.batch_name
+              ? `Creating ${status.batch_name}...`
+              : "Creating your shorts..."}
       </h2>
       <p className="mt-2 text-gray-400">
         {isFailed ? status.error : status.message}

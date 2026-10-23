@@ -120,8 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       credentials: "include",
     });
     clearToken();
-    setUser(null);
-  }, []);
+    // Fall back to guest session when auth is not required
+    await refreshUser();
+  }, [refreshUser]);
 
   const value = useMemo(
     () => ({ user, loading, login, register, logout, authFetch }),

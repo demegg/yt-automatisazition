@@ -1,7 +1,22 @@
+from __future__ import annotations
+
+import os
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-from faster_whisper import WhisperModel
+# Cap BLAS/MKL threads before numpy/onnx/ctranslate2 load — avoids mkl_malloc OOM.
+for _key, _val in (
+    ("OMP_NUM_THREADS", "1"),
+    ("MKL_NUM_THREADS", "1"),
+    ("OPENBLAS_NUM_THREADS", "1"),
+    ("NUMEXPR_NUM_THREADS", "1"),
+    ("VECLIB_MAXIMUM_THREADS", "1"),
+):
+    os.environ.setdefault(_key, _val)
+
+if TYPE_CHECKING:
+    from faster_whisper import WhisperModel
 
 
 def _format_timestamp(seconds: float) -> str:
@@ -53,13 +68,29 @@ def segments_to_srt(segments: list[dict], style: str = "tiktok") -> str:
     return "\n".join(lines)
 
 
-_model_cache: WhisperModel | None = None
+_model_cache: Any = None
 
 
-def get_whisper_model() -> WhisperModel:
+def get_whisper_model() -> Any:
     global _model_cache
     if _model_cache is None:
-        _model_cache = WhisperModel("base", device="cpu", compute_type="int8")
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            raise RuntimeError(
+                "Captions unavailable: faster-whisper/PyAV failed to load "
+                "(often blocked by Windows Application Control). "
+                "Disable captions or unblock the av package DLLs."
+            ) from exc
+        # "tiny" uses far less RAM than "base" on CPU Windows machines.
+        model_size = os.getenv("WHISPER_MODEL", "tiny").strip() or "tiny"
+        _model_cache = WhisperModel(
+            model_size,
+            device="cpu",
+            compute_type="int8",
+            cpu_threads=1,
+            num_workers=1,
+        )
     return _model_cache
 
 
@@ -69,7 +100,12 @@ def generate_captions_for_clip(
     style: str = "tiktok",
 ) -> None:
     model = get_whisper_model()
-    segments_iter, _info = model.transcribe(str(video_path), beam_size=5)
+    segments_iter, _info = model.transcribe(
+        str(video_path),
+        beam_size=1,
+        vad_filter=True,
+        condition_on_previous_text=False,
+    )
     segments = [
         {"start": seg.start, "end": seg.end, "text": seg.text.strip()}
         for seg in segments_iter
