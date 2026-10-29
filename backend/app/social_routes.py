@@ -2,7 +2,7 @@ import os
 
 import secrets
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 
@@ -500,7 +500,7 @@ def tiktok_callback(code: str, state: str) -> RedirectResponse:
 
         refresh,
 
-        datetime.utcnow() + timedelta(seconds=int(expires_in)),
+        datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=int(expires_in)),
 
     )
 

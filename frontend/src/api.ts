@@ -30,19 +30,167 @@ export function setApiAuthFetch(fn: FetchFn) {
   authFetch = fn;
 }
 
+/** FastAPI returns `detail` as a string, or as a list of validation errors. */
+function detailMessage(data: { detail?: unknown }, fallback: string): string {
+  const detail = data?.detail;
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail) && detail[0]?.msg) return String(detail[0].msg);
+  return fallback;
+}
+
 async function api(input: string, init?: RequestInit): Promise<Response> {
   return authFetch(apiPath(input), init);
 }
 
 
 
-export async function listJobs(): Promise<JobSummary[]> {
-  const res = await api("/jobs");
+export interface Capabilities {
+  output: {
+    width: number;
+    height: number;
+    aspect: string;
+    container: string;
+    video_codec: string;
+    audio_codec: string;
+    fps: number;
+    crf: number;
+  };
+  max_upload_mb: number;
+  video_extensions: string[];
+  audio_extensions: string[];
+  captions: string;
+  url_import: string;
+  billing: boolean;
+  password_reset_email: boolean;
+  auth_required: boolean;
+  storage: string;
+  retention: string;
+}
+
+export async function fetchCapabilities(): Promise<Capabilities> {
+  const res = await api("/capabilities");
+  if (!res.ok) throw new Error("Could not load server capabilities");
+  return res.json();
+}
+
+export interface Notice {
+  key: string;
+  job_id: string;
+  kind: string;
+  title: string;
+  body: string;
+  created_at?: string | null;
+  read: boolean;
+}
+
+export async function listNotices(): Promise<Notice[]> {
+  const res = await api("/notices");
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || "Failed to list projects");
+    throw new Error(detailMessage(data, "Could not load notifications"));
   }
   return res.json();
+}
+
+export async function markNoticesRead(keys: string[]): Promise<void> {
+  const res = await api("/notices/read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keys }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(detailMessage(data, "Could not update notifications"));
+  }
+}
+
+export async function listJobs(limit = 48, offset = 0): Promise<JobSummary[]> {
+  const res = await api(`/jobs?limit=${limit}&offset=${offset}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(detailMessage(data, "Failed to list projects"));
+  }
+  return res.json();
+}
+
+export async function renameJob(jobId: string, name: string): Promise<void> {
+  const res = await api(`/jobs/${jobId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name.trim() }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(detailMessage(data, "Could not rename project"));
+  }
+}
+
+export async function deleteJob(jobId: string): Promise<void> {
+  const res = await api(`/jobs/${jobId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(detailMessage(data, "Could not delete project"));
+  }
+}
+
+export async function cancelJob(jobId: string): Promise<void> {
+  const res = await api(`/jobs/${jobId}/cancel`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(detailMessage(data, "Could not cancel"));
+  }
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const res = await api("/auth/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(detailMessage(data, "Could not change password"));
+  }
+}
+
+function storedToken(): string | null {
+  return localStorage.getItem("sf_token");
+}
+
+function uploadForm(
+  path: string,
+  form: FormData,
+  onProgress?: (percent: number) => void
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", apiPath(path));
+    xhr.withCredentials = true;
+    const token = storedToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable || event.total <= 0) return;
+      onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+    };
+    xhr.onload = () => {
+      resolve(
+        new Response(xhr.responseText, {
+          status: xhr.status,
+          headers: {
+            "Content-Type": xhr.getResponseHeader("Content-Type") || "application/json",
+          },
+        })
+      );
+    };
+    xhr.onerror = () => reject(new Error("Upload failed"));
+    xhr.send(form);
+  });
 }
 
 export async function createJob(name: string): Promise<string> {
@@ -55,7 +203,7 @@ export async function createJob(name: string): Promise<string> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || "Failed to create job");
+    throw new Error(detailMessage(data, "Failed to create job"));
   }
 
   const data = await res.json();
@@ -86,7 +234,9 @@ export async function submitVideos(
 
   video1: VideoInput,
 
-  video2?: VideoInput | null
+  video2?: VideoInput | null,
+
+  onProgress?: (percent: number) => void
 
 ): Promise<UploadResult> {
 
@@ -122,13 +272,7 @@ export async function submitVideos(
 
 
 
-  const res = await api(`/jobs/${jobId}/upload`, {
-
-    method: "POST",
-
-    body: form,
-
-  });
+  const res = await uploadForm(`/jobs/${jobId}/upload`, form, onProgress);
 
   if (!res.ok) {
 
@@ -138,7 +282,7 @@ export async function submitVideos(
 
       const data = await res.json();
 
-      message = data.detail ?? message;
+      message = detailMessage(data, message);
 
     } catch {
 
@@ -268,7 +412,7 @@ export async function fetchEditInfo(jobId: string): Promise<EditInfo> {
   const res = await api(`/jobs/${jobId}/edit-info`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || "Failed to load video for editing");
+    throw new Error(detailMessage(data, "Failed to load video for editing"));
   }
   return res.json();
 }
@@ -290,7 +434,7 @@ export async function uploadMusic(
   const res = await api(`/jobs/${jobId}/music`, { method: "POST", body: form });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || "Failed to upload soundtrack");
+    throw new Error(detailMessage(data, "Failed to upload soundtrack"));
   }
   return res.json();
 }
@@ -299,7 +443,7 @@ export async function removeMusic(jobId: string): Promise<void> {
   const res = await api(`/jobs/${jobId}/music`, { method: "DELETE" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || "Failed to remove soundtrack");
+    throw new Error(detailMessage(data, "Failed to remove soundtrack"));
   }
 }
 
@@ -350,7 +494,7 @@ function isShortForgeDesktop(): boolean {
 async function triggerBlobDownload(res: Response, fallbackName: string) {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || "Download failed");
+    throw new Error(detailMessage(data, "Download failed"));
   }
   const blob = await res.blob();
   const header = res.headers.get("Content-Disposition") || "";
@@ -447,7 +591,7 @@ export async function getSocialStatus(): Promise<SocialStatus> {
 
     const data = await res.json().catch(() => ({}));
 
-    throw new Error(data.detail || "Failed to load account status");
+    throw new Error(detailMessage(data, "Failed to load account status"));
 
   }
 
@@ -537,7 +681,7 @@ export async function getSchedulePreview(
 
     const data = await res.json().catch(() => ({}));
 
-    throw new Error(data.detail || "Failed to load schedule preview");
+    throw new Error(detailMessage(data, "Failed to load schedule preview"));
 
   }
 
@@ -581,7 +725,7 @@ export async function createSchedule(
 
     const data = await res.json().catch(() => ({}));
 
-    throw new Error(data.detail || "Failed to create schedule");
+    throw new Error(detailMessage(data, "Failed to create schedule"));
 
   }
 

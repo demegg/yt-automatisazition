@@ -2,7 +2,7 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.paths import DB_PATH, ensure_data_dirs
@@ -89,6 +89,7 @@ def init_db() -> None:
         _migrate_unique_constraints(conn)
         _migrate_multi_user(conn)
         _migrate_job_batches(conn)
+        _migrate_job_state(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS oauth_states (
@@ -103,6 +104,16 @@ def init_db() -> None:
             """
             CREATE INDEX IF NOT EXISTS idx_social_accounts_user_platform
             ON social_accounts(user_id, platform)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notice_reads (
+                user_id INTEGER NOT NULL,
+                notice_key TEXT NOT NULL,
+                read_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, notice_key)
+            )
             """
         )
 
@@ -151,7 +162,7 @@ def _migrate_legacy_oauth(conn: sqlite3.Connection) -> None:
         ).fetchone()
         if existing:
             continue
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         conn.execute(
             """
             INSERT INTO social_accounts
@@ -257,7 +268,7 @@ def get_conn():
 
 
 def create_user(email: str, password_hash: str) -> int:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
@@ -309,7 +320,7 @@ def store_oauth_state(state: str, platform: str, user_id: int) -> None:
                 user_id = excluded.user_id,
                 created_at = excluded.created_at
             """,
-            (state, platform, user_id, datetime.utcnow().timestamp()),
+            (state, platform, user_id, datetime.now(timezone.utc).replace(tzinfo=None).timestamp()),
         )
 
 
@@ -323,7 +334,7 @@ def pop_oauth_state(state: str, ttl_seconds: int = 600) -> tuple[str, int] | Non
             return None
         conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
         created = float(row["created_at"])
-        if datetime.utcnow().timestamp() - created > ttl_seconds:
+        if datetime.now(timezone.utc).replace(tzinfo=None).timestamp() - created > ttl_seconds:
             return None
         return str(row["platform"]), int(row["user_id"])
 
@@ -336,13 +347,34 @@ def _migrate_job_batches(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE user_jobs ADD COLUMN batch_slug TEXT")
 
 
+def _migrate_job_state(conn: sqlite3.Connection) -> None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(user_jobs)")}
+    for name, column_type in (
+        ("status", "TEXT"),
+        ("progress", "REAL"),
+        ("message", "TEXT"),
+        ("total_shorts", "INTEGER"),
+        ("completed_shorts", "INTEGER"),
+        ("error", "TEXT"),
+        ("updated_at", "TEXT"),
+        ("output_dir", "TEXT"),
+        ("shorts_json", "TEXT"),
+        ("video1_path", "TEXT"),
+        ("video2_path", "TEXT"),
+        ("music_path", "TEXT"),
+        ("music_name", "TEXT"),
+    ):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE user_jobs ADD COLUMN {name} {column_type}")
+
+
 def assign_job_to_user(
     job_id: str,
     user_id: int,
     batch_name: str | None = None,
     batch_slug: str | None = None,
 ) -> None:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with get_conn() as conn:
         conn.execute(
             """
@@ -391,27 +423,206 @@ def get_job_owner(job_id: str) -> int | None:
     return int(row["user_id"]) if row else None
 
 
-def list_user_jobs(user_id: int, limit: int = 40) -> list[dict[str, Any]]:
+def _clip(value: Any, limit: int = 500) -> Any:
+    if isinstance(value, str) and len(value) > limit:
+        return value[:limit]
+    return value
+
+
+def _row_to_job(row: sqlite3.Row) -> dict[str, Any]:
+    keys = set(row.keys())
+
+    def cell(name: str, default: Any = None) -> Any:
+        return row[name] if name in keys else default
+
+    shorts: list[Any] = []
+    raw = cell("shorts_json")
+    if isinstance(raw, str) and raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                shorts = parsed
+        except json.JSONDecodeError:
+            shorts = []
+    return {
+        "user_id": int(row["user_id"]),
+        "status": cell("status") or "saved",
+        "progress": float(cell("progress") or 0),
+        "message": cell("message") or "",
+        "total_shorts": int(cell("total_shorts") or 0),
+        "completed_shorts": int(cell("completed_shorts") or 0),
+        "shorts": shorts,
+        "error": cell("error"),
+        "video1_path": cell("video1_path"),
+        "video2_path": cell("video2_path"),
+        "music_path": cell("music_path"),
+        "music_name": cell("music_name"),
+        "batch_name": row["batch_name"],
+        "batch_slug": row["batch_slug"],
+        "output_dir": cell("output_dir"),
+        "cancel_requested": False,
+    }
+
+
+def persist_job_snapshot(job_id: str, job: dict[str, Any]) -> None:
+    shorts = job.get("shorts") or []
+    try:
+        shorts_json = json.dumps(shorts)
+    except TypeError:
+        shorts_json = "[]"
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE user_jobs SET
+                status = ?,
+                progress = ?,
+                message = ?,
+                total_shorts = ?,
+                completed_shorts = ?,
+                error = ?,
+                updated_at = ?,
+                output_dir = ?,
+                shorts_json = ?,
+                video1_path = ?,
+                video2_path = ?,
+                music_path = ?,
+                music_name = ?,
+                batch_name = COALESCE(?, batch_name),
+                batch_slug = COALESCE(?, batch_slug)
+            WHERE job_id = ?
+            """,
+            (
+                job.get("status"),
+                float(job.get("progress") or 0),
+                _clip(job.get("message")),
+                int(job.get("total_shorts") or 0),
+                int(job.get("completed_shorts") or 0),
+                _clip(job.get("error")),
+                now,
+                job.get("output_dir"),
+                shorts_json,
+                job.get("video1_path"),
+                job.get("video2_path"),
+                job.get("music_path"),
+                job.get("music_name"),
+                job.get("batch_name"),
+                job.get("batch_slug"),
+                job_id,
+            ),
+        )
+
+
+def load_job_snapshot(job_id: str) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_jobs WHERE job_id = ?", (job_id,)
+        ).fetchone()
+    if not row:
+        return None
+    return _row_to_job(row)
+
+
+def list_user_jobs(
+    user_id: int, limit: int = 48, offset: int = 0
+) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT job_id, batch_name, batch_slug, created_at
-            FROM user_jobs
+            SELECT * FROM user_jobs
             WHERE user_id = ?
             ORDER BY created_at DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (user_id, limit),
+            (user_id, limit, offset),
         ).fetchall()
-    return [
-        {
-            "job_id": row["job_id"],
-            "batch_name": row["batch_name"],
-            "batch_slug": row["batch_slug"],
-            "created_at": row["created_at"],
-        }
-        for row in rows
-    ]
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        job = _row_to_job(row)
+        keys = set(row.keys())
+        items.append(
+            {
+                "job_id": row["job_id"],
+                "batch_name": row["batch_name"],
+                "batch_slug": row["batch_slug"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"] if "updated_at" in keys else None,
+                "status": job["status"],
+                "progress": job["progress"],
+                "message": job["message"],
+                "total_shorts": job["total_shorts"],
+                "completed_shorts": job["completed_shorts"],
+                "error": job["error"],
+                "video1_path": job.get("video1_path"),
+            }
+        )
+    return items
+
+
+def rename_user_job(job_id: str, batch_name: str) -> None:
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE user_jobs SET batch_name = ?, updated_at = ? WHERE job_id = ?",
+            (batch_name, now, job_id),
+        )
+
+
+def read_notice_keys(user_id: int) -> set[str]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT notice_key FROM notice_reads WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+    return {row["notice_key"] for row in rows}
+
+
+def mark_notices_read(user_id: int, keys: list[str]) -> None:
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    clean = [key.strip() for key in keys if key and len(key.strip()) <= 160][:80]
+    if not clean:
+        return
+    with get_conn() as conn:
+        conn.executemany(
+            """
+            INSERT INTO notice_reads (user_id, notice_key, read_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, notice_key) DO UPDATE SET read_at = excluded.read_at
+            """,
+            [(user_id, key, now) for key in clean],
+        )
+
+
+def delete_user_job(job_id: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM scheduled_posts WHERE job_id = ?", (job_id,))
+        conn.execute("DELETE FROM posted_clips WHERE job_id = ?", (job_id,))
+        conn.execute("DELETE FROM user_jobs WHERE job_id = ?", (job_id,))
+
+
+def mark_interrupted_jobs() -> int:
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE user_jobs
+            SET status = 'failed',
+                error = 'The server restarted while this job was running.',
+                message = 'Interrupted',
+                updated_at = ?
+            WHERE status IN ('processing', 'queued', 'importing')
+            """,
+            (now,),
+        )
+        return int(cur.rowcount or 0)
+
+
+def update_password_hash(user_id: int, password_hash: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (password_hash, user_id),
+        )
 
 
 def job_belongs_to_user(job_id: str, user_id: int) -> bool:
@@ -429,7 +640,7 @@ def save_social_account(
     external_id: str | None = None,
     extra: dict[str, Any] | None = None,
 ) -> int:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with get_conn() as conn:
         count = conn.execute(
             """
@@ -480,7 +691,7 @@ def update_social_account_tokens(
                 access_token,
                 refresh_token,
                 expires_at.isoformat() if expires_at else None,
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                 account_id,
             ),
         )
@@ -648,7 +859,7 @@ def get_scheduled_filenames(
 
 
 def create_scheduled_posts(rows: list[dict[str, Any]]) -> int:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     with get_conn() as conn:
         count = 0
         for row in rows:
@@ -742,7 +953,7 @@ def mark_post_scheduled_result(
                         row["account_id"],
                         row["filename"],
                         platform_video_id,
-                        datetime.utcnow().isoformat(),
+                        datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                     ),
                 )
 

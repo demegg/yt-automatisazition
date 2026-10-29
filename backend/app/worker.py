@@ -50,11 +50,24 @@ def _clip_ranges(request: ProcessRequest, usable_duration: float) -> list[tuple[
     ]
 
 
+def _cancelled(job_id: str) -> bool:
+    job = get_job(job_id)
+    return bool(job and (job.get("cancel_requested") or job.get("status") == "cancelled"))
+
+
 def run_processing(request: ProcessRequest) -> None:
     ensure_dirs()
     job = get_job(request.job_id)
     if not job or not job.get("video1_path"):
         update_job(request.job_id, status="failed", error="Missing uploaded video")
+        return
+    if _cancelled(request.job_id):
+        update_job(
+            request.job_id,
+            status="cancelled",
+            message="Cancelled before processing started",
+            error=None,
+        )
         return
 
     video1 = Path(job["video1_path"])
@@ -118,6 +131,20 @@ def run_processing(request: ProcessRequest) -> None:
         shorts: list[ShortInfo] = []
 
         for i, (start, end) in enumerate(ranges):
+            if _cancelled(request.job_id):
+                update_job(
+                    request.job_id,
+                    status="cancelled",
+                    message=(
+                        f"Cancelled. {len(shorts)} finished clip(s) were kept."
+                        if shorts
+                        else "Cancelled."
+                    ),
+                    error=None,
+                    shorts=[s.model_dump() for s in shorts],
+                    completed_shorts=len(shorts),
+                )
+                return
             clip_duration = end - start
             part_num = i + 1
             part_label = f"Part {part_num}"
@@ -237,20 +264,16 @@ def create_zip(job_id: str) -> Path | None:
 
 
 def cleanup_job(job_id: str) -> None:
-    upload1 = UPLOAD_DIR / f"{job_id}_video1"
-    upload2 = UPLOAD_DIR / f"{job_id}_video2"
-    for p in upload1.parent.glob(f"{job_id}_*"):
-        if p.is_file():
-            p.unlink(missing_ok=True)
+    from app.jobs import resolve_output_dir
+    from app.paths import safe_output_dir
 
-    job_output = None
-    job = get_job(job_id)
-    if job and job.get("output_dir"):
-        job_output = Path(job["output_dir"])
-    else:
-        job_output = OUTPUT_DIR / job_id
-    if job_output.exists():
-        shutil.rmtree(job_output, ignore_errors=True)
+    for path in UPLOAD_DIR.glob(f"{job_id}_*"):
+        if path.is_file():
+            path.unlink(missing_ok=True)
+
+    safe = safe_output_dir(resolve_output_dir(job_id))
+    if safe and safe.exists():
+        shutil.rmtree(safe, ignore_errors=True)
 
 
 def new_job_id() -> str:

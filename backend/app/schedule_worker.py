@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.db import get_pending_posts, mark_post_scheduled_result
 from app.schedule_service import get_video_path
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def process_pending_posts() -> None:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     pending = get_pending_posts(now)
     if not pending:
         return

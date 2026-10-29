@@ -105,7 +105,9 @@ export interface JobSummary {
   completed_shorts: number;
   error?: string | null;
   live?: boolean;
+  has_preview?: boolean;
   created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface AppSettings {

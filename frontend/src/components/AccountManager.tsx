@@ -51,7 +51,7 @@ function AccountList({
   label: string;
 }) {
   return (
-    <div className="rounded-xl border border-surface-border p-4">
+    <div className="rounded-xl border border-white/[0.08] p-4">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {icon}
@@ -66,12 +66,12 @@ function AccountList({
             Add account
           </a>
         ) : (
-          <span className="text-xs text-gray-500">Add API keys to .env</span>
+          <span className="text-xs text-faint">Add API keys to .env</span>
         )}
       </div>
 
       {accounts.length === 0 ? (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-faint">
           No {label} accounts connected. Connect one to schedule or upload clips.
         </p>
       ) : (
@@ -82,7 +82,7 @@ function AccountList({
               className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition ${
                 selectedId === acc.id
                   ? "border-brand bg-brand/10"
-                  : "border-surface-border hover:border-brand/40"
+                  : "border-white/[0.08] hover:border-brand/40"
               }`}
             >
               <input
@@ -92,17 +92,17 @@ function AccountList({
                 onChange={() => onSelect(acc.id)}
                 className="accent-brand"
               />
-              <UserCircle className="h-5 w-5 shrink-0 text-gray-400" />
+              <UserCircle className="h-5 w-5 shrink-0 text-muted" />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{acc.display_name}</p>
                 {acc.is_default && (
-                  <p className="text-xs text-gray-500">Default</p>
+                  <p className="text-xs text-faint">Default</p>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => onDelete(acc.id)}
-                className="rounded-lg p-2 text-gray-500 hover:bg-red-500/10 hover:text-red-400"
+                className="rounded-lg p-2 text-faint hover:bg-danger/10 hover:text-danger"
                 title="Remove account"
               >
                 <Trash2 className="h-4 w-4" />
@@ -116,7 +116,7 @@ function AccountList({
         <button
           type="button"
           onClick={() => onSelect(null)}
-          className="mt-3 text-xs text-gray-500 hover:text-gray-300"
+          className="mt-3 text-xs text-faint hover:text-ink/80"
         >
           Skip {label} for this batch
         </button>
@@ -213,7 +213,7 @@ export default function AccountManager({
 
   if (loading && !social) {
     return (
-      <div className="flex items-center gap-2 text-gray-400">
+      <div className="flex items-center gap-2 text-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
         Loading accounts...
       </div>
@@ -229,14 +229,14 @@ export default function AccountManager({
     <div>
       <div className="mb-6">
         <h2 className="font-display text-2xl font-bold">Choose accounts</h2>
-        <p className="mt-1 text-gray-400">
+        <p className="mt-1 text-muted">
           Pick which YouTube or TikTok accounts will receive your clips. You can
           connect multiple accounts and switch per batch.
         </p>
       </div>
 
       {error && (
-        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>
       )}
@@ -246,7 +246,7 @@ export default function AccountManager({
           <button
             type="button"
             onClick={() => setShowOAuthHelp((v) => !v)}
-            className="flex w-full items-center gap-2 text-sm text-gray-400 hover:text-gray-200"
+            className="flex w-full items-center gap-2 text-sm text-muted hover:text-ink"
           >
             <ChevronDown
               className={`h-4 w-4 transition ${showOAuthHelp ? "rotate-180" : ""}`}
@@ -254,11 +254,11 @@ export default function AccountManager({
             OAuth redirect URI setup (only needed if connect fails)
           </button>
           {showOAuthHelp && (
-            <div className="mt-3 space-y-3 rounded-xl border border-surface-border bg-surface/40 px-4 py-3 text-sm text-gray-300">
+            <div className="mt-3 space-y-3 rounded-2xl border border-white/[0.08] bg-white/[0.02]/40 px-4 py-3 text-sm text-ink/80">
               {social?.youtube_configured && (
                 <div>
-                  <p className="font-medium text-gray-200">YouTube (Google Cloud)</p>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="font-medium text-ink">YouTube (Google Cloud)</p>
+                  <p className="mt-1 text-xs text-faint">
                     Credentials → OAuth client → Authorized redirect URIs:
                   </p>
                   <code className="mt-1 block break-all text-xs text-brand">
@@ -267,7 +267,7 @@ export default function AccountManager({
                   <code className="block break-all text-xs text-brand">
                     http://localhost:8890/api/social/youtube/callback
                   </code>
-                  <p className="mt-2 text-xs text-gray-500">
+                  <p className="mt-2 text-xs text-faint">
                     If Google says &quot;has not completed verification&quot; or
                     access_denied: OAuth consent screen → Test users → add your
                     Google email, then try again.
@@ -276,8 +276,8 @@ export default function AccountManager({
               )}
               {social?.tiktok_configured && (
                 <div>
-                  <p className="font-medium text-gray-200">TikTok (developers.tiktok.com)</p>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="font-medium text-ink">TikTok (developers.tiktok.com)</p>
+                  <p className="mt-1 text-xs text-faint">
                     Your app → Login Kit → Redirect URI:
                   </p>
                   <code className="mt-1 block break-all text-xs text-brand">

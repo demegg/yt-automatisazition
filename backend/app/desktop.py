@@ -320,7 +320,7 @@ def main() -> None:
                 )
                 return
 
-        _open_window(f"http://{HOST}:{port}/")
+        _open_window(f"http://{HOST}:{port}/app")
     except Exception:
         _alert("ShortForge failed to start. Check data/shortforge-desktop.log")
         _log(traceback.format_exc())

@@ -202,14 +202,14 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
     (youtubeOn && youtubeId) || (tiktokOn && tiktokId);
 
   return (
-    <div className="rounded-2xl border border-surface-border bg-surface/40 p-6">
+    <div className="rounded-2xl border border-white/[0.08] bg-surface/40 p-6">
       <div className="mb-6 flex items-start gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/20">
           <CalendarClock className="h-5 w-5 text-brand" />
         </div>
         <div>
           <h3 className="font-display text-xl font-bold">Publish & schedule</h3>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-muted">
             Connect accounts once, then schedule all {shortCount} clips
           </p>
         </div>
@@ -224,7 +224,7 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
           Connect your accounts
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-surface-border p-4">
+          <div className="rounded-xl border border-white/[0.08] p-4">
             <div className="mb-3 flex items-center gap-2">
               <Youtube className="h-5 w-5 text-red-500" />
               <span className="font-medium">YouTube Shorts</span>
@@ -235,9 +235,9 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
                 {accountLabel(youtubeAccounts, youtubeId)}
               </p>
             ) : social?.youtube_configured ? (
-              <p className="mb-3 text-sm text-gray-500">Not connected yet</p>
+              <p className="mb-3 text-sm text-faint">Not connected yet</p>
             ) : (
-              <p className="mb-3 text-sm text-gray-500">Add Google keys to backend/.env</p>
+              <p className="mb-3 text-sm text-faint">Add Google keys to backend/.env</p>
             )}
             {social?.youtube_configured && (
               <button
@@ -250,7 +250,7 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
               </button>
             )}
           </div>
-          <div className="rounded-xl border border-surface-border p-4">
+          <div className="rounded-xl border border-white/[0.08] p-4">
             <div className="mb-3 flex items-center gap-2">
               <TikTokIcon className="h-5 w-5" />
               <span className="font-medium">TikTok</span>
@@ -261,9 +261,9 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
                 {accountLabel(tiktokAccounts, tiktokId)}
               </p>
             ) : social?.tiktok_configured ? (
-              <p className="mb-3 text-sm text-gray-500">Not connected yet</p>
+              <p className="mb-3 text-sm text-faint">Not connected yet</p>
             ) : (
-              <p className="mb-3 text-sm text-gray-500">Add TikTok keys to backend/.env</p>
+              <p className="mb-3 text-sm text-faint">Add TikTok keys to backend/.env</p>
             )}
             {social?.tiktok_configured && (
               <button
@@ -280,19 +280,19 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
         <button
           type="button"
           onClick={() => setShowHelp((v) => !v)}
-          className="mt-3 flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300"
+          className="mt-3 flex items-center gap-1 text-xs text-faint hover:text-ink/80"
         >
           <ChevronDown className={`h-3 w-3 transition ${showHelp ? "rotate-180" : ""}`} />
           First time? OAuth setup help
         </button>
         {showHelp && (
-          <div className="mt-2 rounded-lg border border-surface-border bg-surface/60 p-3 text-xs text-gray-400">
-            <p className="mb-2 text-gray-300">Google Cloud (YouTube):</p>
+          <div className="mt-2 rounded-lg border border-white/[0.08] bg-surface/60 p-3 text-xs text-muted">
+            <p className="mb-2 text-ink/80">Google Cloud (YouTube):</p>
             <p>Credentials → OAuth client → add redirect URIs:</p>
             <code className="block text-brand">http://127.0.0.1:8890/api/social/youtube/callback</code>
             <code className="block text-brand">http://localhost:8890/api/social/youtube/callback</code>
             <p className="mt-2">
-              OAuth consent screen → <strong className="text-gray-300">Test users</strong> → add the
+              OAuth consent screen → <strong className="text-ink/80">Test users</strong> → add the
               exact Gmail you use on the Google sign-in screen (e.g. urdiademetre@gmail.com).
             </p>
             <p className="mt-2 text-amber-200/90">
@@ -300,7 +300,7 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
               your app is still in Testing mode — add yourself as a test user, or publish to
               Production after Google verification.
             </p>
-            <p className="mt-3 mb-2 text-gray-300">TikTok (developers.tiktok.com):</p>
+            <p className="mt-3 mb-2 text-ink/80">TikTok (developers.tiktok.com):</p>
             <code className="block text-brand">http://127.0.0.1:8890/api/social/tiktok/callback</code>
           </div>
         )}
@@ -317,7 +317,7 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
           </p>
           <div className="flex flex-wrap gap-3">
             {youtubeAccounts.length > 0 && (
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-surface-border px-4 py-2">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/[0.08] px-4 py-2">
                 <input
                   type="checkbox"
                   checked={youtubeOn}
@@ -329,7 +329,7 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
               </label>
             )}
             {tiktokAccounts.length > 0 && (
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-surface-border px-4 py-2">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/[0.08] px-4 py-2">
                 <input
                   type="checkbox"
                   checked={tiktokOn}
@@ -343,7 +343,7 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
           </div>
           {youtubeAccounts.length > 1 && youtubeOn && (
             <select
-              className="mt-3 rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm"
+              className="mt-3 rounded-lg border border-white/[0.08] bg-surface px-3 py-2 text-sm"
               value={youtubeId ?? ""}
               onChange={(e) => setYoutubeId(Number(e.target.value))}
             >
@@ -356,7 +356,7 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
           )}
           {tiktokAccounts.length > 1 && tiktokOn && (
             <select
-              className="mt-3 ml-0 sm:ml-3 rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm"
+              className="mt-3 ml-0 sm:ml-3 rounded-lg border border-white/[0.08] bg-surface px-3 py-2 text-sm"
               value={tiktokId ?? ""}
               onChange={(e) => setTiktokId(Number(e.target.value))}
             >
@@ -388,7 +388,7 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
                 className={`rounded-xl px-5 py-2 text-sm font-medium transition ${
                   postsPerDay === n
                     ? "bg-accent text-white"
-                    : "border border-surface-border hover:border-brand/50"
+                    : "border border-white/[0.08] hover:border-brand/50"
                 }`}
               >
                 {n} / day
@@ -399,14 +399,14 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
       )}
 
       {loading && canSchedule && (
-        <div className="mb-4 flex items-center gap-2 text-sm text-gray-400">
+        <div className="mb-4 flex items-center gap-2 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading preview...
         </div>
       )}
 
       {preview && canSchedule && (
-        <div className="mb-6 rounded-xl bg-brand/10 p-4 text-sm text-gray-300">
+        <div className="mb-6 rounded-xl bg-brand/10 p-4 text-sm text-ink/80">
           {preview.platforms.youtube && (
             <p>
               YouTube: <strong>{preview.platforms.youtube.available_to_schedule}</strong> clips
@@ -423,12 +423,12 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
       )}
 
       {error && (
-        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>
       )}
       {message && (
-        <div className="mb-4 rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-gray-200">
+        <div className="mb-4 rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-ink">
           {message}
         </div>
       )}
@@ -453,33 +453,33 @@ export default function PublishPanel({ jobId, shortCount }: Props) {
           )}
         </button>
       ) : (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-faint">
           Connect YouTube or TikTok above to schedule uploads.
         </p>
       )}
 
       {schedules.length > 0 && (
         <div className="mt-8">
-          <h4 className="mb-3 font-medium text-gray-300">Queue</h4>
+          <h4 className="mb-3 font-medium text-ink/80">Queue</h4>
           <div className="max-h-48 space-y-2 overflow-y-auto">
             {schedules.slice(0, 20).map((s) => (
               <div
                 key={s.id}
-                className="flex items-center justify-between rounded-lg border border-surface-border bg-surface/60 px-3 py-2 text-sm"
+                className="flex items-center justify-between rounded-lg border border-white/[0.08] bg-surface/60 px-3 py-2 text-sm"
               >
                 <div className="flex min-w-0 items-center gap-2">
                   {s.status === "posted" ? (
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-brand" />
                   ) : s.status === "failed" ? (
-                    <XCircle className="h-4 w-4 shrink-0 text-red-400" />
+                    <XCircle className="h-4 w-4 shrink-0 text-danger" />
                   ) : (
-                    <Clock className="h-4 w-4 shrink-0 text-gray-400" />
+                    <Clock className="h-4 w-4 shrink-0 text-muted" />
                   )}
                   <span className="truncate">
                     {s.account_name || s.platform} · {s.filename}
                   </span>
                 </div>
-                <span className="shrink-0 text-xs text-gray-500">
+                <span className="shrink-0 text-xs text-faint">
                   {s.status === "posted"
                     ? "Posted"
                     : s.status === "failed"

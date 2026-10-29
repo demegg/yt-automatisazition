@@ -20,6 +20,29 @@ def _run_ffmpeg(args: list[str], timeout: int | None = None) -> None:
         raise RuntimeError(err)
 
 
+def extract_poster(source: Path, dest: Path) -> bool:
+    """Write one JPEG frame for library previews. Failures are non-fatal."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _run_ffmpeg(
+            [
+                "-ss",
+                "0.4",
+                "-i",
+                str(source),
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=480:-2",
+                str(dest),
+            ],
+            timeout=40,
+        )
+    except (RuntimeError, subprocess.TimeoutExpired, OSError):
+        return False
+    return dest.exists() and dest.stat().st_size > 0
+
+
 def get_video_duration(path: str | Path) -> float:
     cmd = [
         "ffprobe",
