@@ -14,6 +14,7 @@ const TOKEN_KEY = "sf_token";
 export interface User {
   id: number;
   email: string;
+  guest?: boolean;
 }
 
 interface AuthContextValue {
@@ -26,6 +27,19 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+/** FastAPI returns `detail` as a string, or as a list of validation errors. */
+function errorMessage(data: { detail?: unknown }, fallback: string): string {
+  const detail = data.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length) {
+    const first = detail[0] as { msg?: string; loc?: unknown[] };
+    const field = Array.isArray(first.loc) ? String(first.loc[first.loc.length - 1] ?? "") : "";
+    const msg = (first.msg || fallback).replace(/^value is not a valid email address: /i, "");
+    return field && field !== "body" ? `${field[0].toUpperCase()}${field.slice(1)}: ${msg}` : msg;
+  }
+  return fallback;
+}
 
 function storeToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
@@ -86,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Login failed");
+        throw new Error(errorMessage(data, "Login failed"));
       }
       const data = await res.json();
       storeToken(data.access_token);
@@ -105,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Registration failed");
+        throw new Error(errorMessage(data, "Registration failed"));
       }
       const data = await res.json();
       storeToken(data.access_token);
@@ -120,8 +134,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       credentials: "include",
     });
     clearToken();
-    setUser(null);
-  }, []);
+    // Fall back to guest session when auth is not required
+    await refreshUser();
+  }, [refreshUser]);
 
   const value = useMemo(
     () => ({ user, loading, login, register, logout, authFetch }),

@@ -35,37 +35,37 @@ export default function LoginPage() {
           <Logo size={72} />
           <div>
             <h1 className="font-display text-2xl font-bold">ShortForge</h1>
-            <p className="text-sm text-gray-400">Sign in to create & schedule clips</p>
+            <p className="text-sm text-muted">Sign in to create & schedule clips</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm text-gray-400">Email</label>
+            <label className="mb-1 block text-sm text-muted">Email</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-surface-border bg-surface px-4 py-3 text-white outline-none focus:border-brand"
+              className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-white outline-none focus:border-brand"
               placeholder="you@example.com"
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-gray-400">Password</label>
+            <label className="mb-1 block text-sm text-muted">Password</label>
             <input
               type="password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-surface-border bg-surface px-4 py-3 text-white outline-none focus:border-brand"
+              className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-white outline-none focus:border-brand"
               placeholder="At least 8 characters"
             />
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
               {error}
             </div>
           )}
@@ -84,7 +84,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-gray-400">
+        <p className="mt-6 text-center text-sm text-muted">
           {mode === "login" ? "New here?" : "Already have an account?"}{" "}
           <button
             type="button"

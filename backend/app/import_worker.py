@@ -46,6 +46,17 @@ def run_url_imports(
         if downloads:
             # Sequential downloads — more reliable with yt-dlp on Windows.
             for slot, url in downloads:
+                current = get_job(job_id)
+                if current and (
+                    current.get("cancel_requested") or current.get("status") == "cancelled"
+                ):
+                    update_job(
+                        job_id,
+                        status="cancelled",
+                        message="Import cancelled",
+                        error=None,
+                    )
+                    return
                 slot_key, downloaded_path, _ = _download_slot(job_id, slot, url)
                 if slot_key == "video1":
                     final_path1 = downloaded_path

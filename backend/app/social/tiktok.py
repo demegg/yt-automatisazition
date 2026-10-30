@@ -1,3 +1,4 @@
+from datetime import timezone
 import os
 import time
 from pathlib import Path
@@ -41,7 +42,7 @@ def _access_token_for_account(account_id: int) -> str:
     expires_at = account.get("expires_at")
     if expires_at:
         try:
-            if datetime.fromisoformat(expires_at) > datetime.utcnow():
+            if datetime.fromisoformat(expires_at) > datetime.now(timezone.utc).replace(tzinfo=None):
                 return account["access_token"]
         except ValueError:
             pass
@@ -73,7 +74,7 @@ def _access_token_for_account(account_id: int) -> str:
         account_id,
         access,
         data.get("refresh_token") or refresh,
-        datetime.utcnow() + timedelta(seconds=int(expires_in)),
+        datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=int(expires_in)),
     )
     return access
 

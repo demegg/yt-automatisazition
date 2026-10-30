@@ -21,7 +21,7 @@ export function notifyStageReady(title: string, body: string): void {
   try {
     const notification = new Notification(title, {
       body,
-      icon: "/vite.svg",
+      icon: "/favicon.svg",
       tag: TAG,
       requireInteraction: false,
     });

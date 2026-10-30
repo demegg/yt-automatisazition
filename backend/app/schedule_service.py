@@ -3,18 +3,18 @@ from pathlib import Path
 
 from app.db import (
     create_scheduled_posts,
+    get_job_batch,
     get_posted_filenames,
     get_scheduled_filenames,
     get_social_account,
 )
-from app.paths import OUTPUT_DIR
+from app.jobs import resolve_output_dir
+from app.paths import clip_index_label, list_short_files
 
 
 def list_job_short_filenames(job_id: str) -> list[str]:
-    job_output = OUTPUT_DIR / job_id
-    if not job_output.exists():
-        return []
-    return sorted(f.name for f in job_output.glob("short_*.mp4") if f.is_file())
+    job_output = resolve_output_dir(job_id)
+    return [f.name for f in list_short_files(job_output)]
 
 
 def get_available_filenames(
@@ -78,6 +78,8 @@ def create_post_schedule(
 ) -> dict:
     start = start_date or (datetime.now() + timedelta(hours=1))
     start = start.replace(minute=0, second=0, microsecond=0)
+    batch = get_job_batch(job_id)
+    batch_label = (batch or {}).get("batch_name") or title_prefix
 
     summary: dict[str, dict] = {}
     total_created = 0
@@ -111,14 +113,14 @@ def create_post_schedule(
         )
         rows = []
         for filename, scheduled_at in zip(available, times):
-            index = filename.replace("short_", "").replace(".mp4", "")
+            index = clip_index_label(filename)
             rows.append(
                 {
                     "job_id": job_id,
                     "platform": platform,
                     "account_id": account_id,
                     "filename": filename,
-                    "title": f"{title_prefix} #{index}",
+                    "title": f"{batch_label} #{index}",
                     "scheduled_at": scheduled_at.isoformat(),
                 }
             )
@@ -143,7 +145,7 @@ def create_post_schedule(
 
 
 def get_video_path(job_id: str, filename: str) -> Path:
-    path = OUTPUT_DIR / job_id / filename
+    path = resolve_output_dir(job_id) / filename
     if not path.exists():
         raise FileNotFoundError(f"Video not found: {filename}")
     return path

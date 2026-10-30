@@ -130,21 +130,21 @@ export default function SchedulePanel({
 
   if (!youtubeAccountId && !tiktokAccountId) {
     return (
-      <div className="rounded-2xl border border-surface-border bg-surface/40 p-6 text-gray-400">
+      <div className="rounded-2xl border border-white/[0.08] bg-surface/40 p-6 text-muted">
         No accounts selected. Go back to Accounts and pick YouTube or TikTok targets.
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-surface-border bg-surface/40 p-6">
+    <div className="rounded-2xl border border-white/[0.08] bg-surface/40 p-6">
       <div className="mb-6 flex items-start gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/20">
           <CalendarClock className="h-5 w-5 text-brand" />
         </div>
         <div>
           <h3 className="font-display text-xl font-bold">Schedule uploads</h3>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-muted">
             Auto-post to your selected accounts — never reposts the same clip twice
           </p>
         </div>
@@ -152,14 +152,14 @@ export default function SchedulePanel({
 
       <div className="mb-6 flex flex-wrap gap-3">
         {youtubeAccountId && (
-          <div className="flex items-center gap-2 rounded-xl border border-surface-border px-4 py-2 text-sm">
+          <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-4 py-2 text-sm">
             <Youtube className="h-4 w-4 text-red-500" />
             <span>{youtubeName || "YouTube"}</span>
             <CheckCircle2 className="h-4 w-4 text-brand" />
           </div>
         )}
         {tiktokAccountId && (
-          <div className="flex items-center gap-2 rounded-xl border border-surface-border px-4 py-2 text-sm">
+          <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-4 py-2 text-sm">
             <TikTokIcon className="h-4 w-4" />
             <span>{tiktokName || "TikTok"}</span>
             <CheckCircle2 className="h-4 w-4 text-brand" />
@@ -168,7 +168,7 @@ export default function SchedulePanel({
       </div>
 
       <div className="mb-6">
-        <p className="mb-3 text-sm font-medium text-gray-300">Posts per day</p>
+        <p className="mb-3 text-sm font-medium text-ink/80">Posts per day</p>
         <div className="flex flex-wrap gap-2">
           {POSTS_OPTIONS.map((n) => (
             <button
@@ -178,7 +178,7 @@ export default function SchedulePanel({
               className={`rounded-xl px-5 py-2 text-sm font-medium transition ${
                 postsPerDay === n
                   ? "bg-accent text-white"
-                  : "border border-surface-border hover:border-brand/50"
+                  : "border border-white/[0.08] hover:border-brand/50"
               }`}
             >
               {n} / day
@@ -188,14 +188,14 @@ export default function SchedulePanel({
       </div>
 
       {loading && !preview && (
-        <div className="mb-4 flex items-center gap-2 text-sm text-gray-400">
+        <div className="mb-4 flex items-center gap-2 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading preview...
         </div>
       )}
 
       {preview && (
-        <div className="mb-6 rounded-xl bg-brand/10 p-4 text-sm text-gray-300">
+        <div className="mb-6 rounded-xl bg-brand/10 p-4 text-sm text-ink/80">
           <p>
             <strong className="text-white">{shortCount}</strong> shorts total
           </p>
@@ -221,12 +221,12 @@ export default function SchedulePanel({
       )}
 
       {error && (
-        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>
       )}
       {message && (
-        <div className="mb-4 rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-gray-200">
+        <div className="mb-4 rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-ink">
           {message}
         </div>
       )}
@@ -252,26 +252,26 @@ export default function SchedulePanel({
 
       {schedules.length > 0 && (
         <div className="mt-8">
-          <h4 className="mb-3 font-medium text-gray-300">Scheduled queue</h4>
+          <h4 className="mb-3 font-medium text-ink/80">Scheduled queue</h4>
           <div className="max-h-64 space-y-2 overflow-y-auto">
             {schedules.map((s) => (
               <div
                 key={s.id}
-                className="flex items-center justify-between rounded-lg border border-surface-border bg-surface/60 px-3 py-2 text-sm"
+                className="flex items-center justify-between rounded-lg border border-white/[0.08] bg-surface/60 px-3 py-2 text-sm"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   {s.status === "posted" ? (
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-brand" />
                   ) : s.status === "failed" ? (
-                    <XCircle className="h-4 w-4 shrink-0 text-red-400" />
+                    <XCircle className="h-4 w-4 shrink-0 text-danger" />
                   ) : (
-                    <Clock className="h-4 w-4 shrink-0 text-gray-400" />
+                    <Clock className="h-4 w-4 shrink-0 text-muted" />
                   )}
                   <span className="truncate">
                     {s.account_name || s.platform} · {s.filename}
                   </span>
                 </div>
-                <span className="shrink-0 text-xs text-gray-500">
+                <span className="shrink-0 text-xs text-faint">
                   {s.status === "posted"
                     ? "Posted"
                     : formatScheduleTime(s.scheduled_at)}

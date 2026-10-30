@@ -3,13 +3,21 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from fastapi import Cookie, Depends, HTTPException, Request
+from fastapi import Cookie, HTTPException, Request
 
-from app.db import get_user_by_id
+from app.db import ensure_guest_user, get_user_by_id
 
 ALGORITHM = "HS256"
 COOKIE_NAME = "sf_token"
 TOKEN_DAYS = 30
+
+
+def auth_required() -> bool:
+    return os.getenv("AUTH_REQUIRED", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 def _secret() -> str:
@@ -57,6 +65,11 @@ def _user_from_payload(payload: dict) -> CurrentUser | None:
     return CurrentUser(id=user["id"], email=user["email"])
 
 
+def _guest_user() -> CurrentUser:
+    guest = ensure_guest_user()
+    return CurrentUser(id=guest["id"], email=guest["email"])
+
+
 def get_current_user(
     request: Request,
     sf_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
@@ -67,13 +80,19 @@ def get_current_user(
         token = auth[7:].strip()
 
     if not token:
-        raise HTTPException(401, "Not authenticated. Please sign in.")
+        if auth_required():
+            raise HTTPException(401, "Not authenticated. Please sign in.")
+        return _guest_user()
 
     payload = decode_token(token)
     if not payload:
-        raise HTTPException(401, "Session expired. Please sign in again.")
+        if auth_required():
+            raise HTTPException(401, "Session expired. Please sign in again.")
+        return _guest_user()
 
     user = _user_from_payload(payload)
     if not user:
-        raise HTTPException(401, "Invalid session. Please sign in again.")
+        if auth_required():
+            raise HTTPException(401, "Invalid session. Please sign in again.")
+        return _guest_user()
     return user
